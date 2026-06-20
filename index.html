@@ -2,15 +2,17 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, shrink-to-fit=yes">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Grocery POS • Billing Web App</title>
-  <!-- PWA capable -->
   <meta name="theme-color" content="#0f172a">
   <link rel="manifest" href="data:application/json;base64,ewogICJuYW1lIjogIkdyb2NlcnkgUE9TIiwKICAic2hvcnRfbmFtZSI6ICJQb3MiLAogICJzdGFydF91cmwiOiAiLiIsCiAgImRpc3BsYXkiOiAic3RhbmRhbG9uZSIsCiAgImJhY2tncm91bmRfY29sb3IiOiAiIzBmMTcyYSIsCiAgInRoZW1lX2NvbG9yIjogIiMwZjE3MmEiCn0=">
+  
   <!-- Libraries -->
   <script src="https://unpkg.com/quagga@0.12.1/dist/quagga.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  
   <style>
     * {
       margin: 0;
@@ -28,6 +30,8 @@
       --primary-foreground: #ffffff;
       --accent: #16a34a;
       --danger: #dc2626;
+      --warning: #f59e0b;
+      --info: #3b82f6;
       --shadow: 0 4px 12px rgba(0,0,0,0.05);
       --radius: 16px;
     }
@@ -50,6 +54,7 @@
       align-items: flex-start;
       min-height: 100vh;
       padding: 12px;
+      margin: 0;
     }
     .app-container {
       max-width: 520px;
@@ -81,10 +86,18 @@
       color: var(--text);
       display: flex;
       align-items: center;
+      justify-content: center;
+      min-width: 44px;
+      min-height: 44px;
     }
     .grid-2 {
       display: grid;
       grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .grid-3 {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
       gap: 10px;
     }
     .btn {
@@ -101,11 +114,27 @@
       justify-content: center;
       gap: 6px;
       transition: 0.2s;
+      min-height: 48px;
+    }
+    .btn:active {
+      transform: scale(0.98);
     }
     .btn-outline {
       background: transparent;
       border: 1px solid var(--border);
       color: var(--text);
+    }
+    .btn-accent {
+      background: var(--accent);
+      color: white;
+    }
+    .btn-warning {
+      background: var(--warning);
+      color: white;
+    }
+    .btn-info {
+      background: var(--info);
+      color: white;
     }
     .cart-item {
       display: flex;
@@ -117,6 +146,7 @@
       border-radius: 12px;
       margin-bottom: 8px;
       border: 1px solid var(--border);
+      gap: 8px;
     }
     .qty-control {
       display: flex;
@@ -124,28 +154,39 @@
       gap: 6px;
     }
     .qty-control button {
-      width: 32px;
-      height: 32px;
+      width: 36px;
+      height: 36px;
       border-radius: 8px;
       border: 1px solid var(--border);
       background: var(--surface);
       font-weight: bold;
       cursor: pointer;
+      font-size: 1.2rem;
     }
-    input, select {
+    input, select, textarea {
       background: var(--bg);
       border: 1px solid var(--border);
       border-radius: 10px;
-      padding: 10px;
+      padding: 12px;
       color: var(--text);
       width: 100%;
       margin-top: 4px;
+      font-size: 16px;
+    }
+    label {
+      font-size: 0.9rem;
+      color: var(--text-secondary);
+      margin-top: 8px;
+      display: block;
     }
     .summary {
       background: var(--bg);
       border-radius: 14px;
-      padding: 12px;
+      padding: 16px;
       font-weight: 500;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
     }
     .hidden {
       display: none !important;
@@ -153,11 +194,12 @@
     .modal {
       position: fixed;
       top: 0; left: 0; width: 100%; height: 100%;
-      background: rgba(0,0,0,0.5);
+      background: rgba(0,0,0,0.6);
       display: flex;
       align-items: center;
       justify-content: center;
       z-index: 1000;
+      backdrop-filter: blur(2px);
     }
     .modal-content {
       background: var(--surface);
@@ -165,16 +207,21 @@
       border-radius: 20px;
       width: 90%;
       max-width: 400px;
-      max-height: 80vh;
+      max-height: 85vh;
       overflow-y: auto;
     }
     .scanner-view {
       width: 100%;
-      height: 220px;
+      height: 250px;
       background: #000;
       border-radius: 16px;
       overflow: hidden;
       position: relative;
+    }
+    .scanner-view video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
     }
     .drawer {
       position: fixed;
@@ -184,14 +231,60 @@
       background: var(--surface);
       border-radius: 24px 24px 0 0;
       padding: 20px;
-      box-shadow: 0 -10px 20px rgba(0,0,0,0.2);
+      box-shadow: 0 -10px 30px rgba(0,0,0,0.3);
       z-index: 999;
       max-height: 70vh;
       overflow-y: auto;
     }
+    .toast-message {
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 2000;
+      padding: 12px 24px;
+      border-radius: 12px;
+      animation: slideDown 0.3s ease;
+      min-width: 200px;
+      text-align: center;
+      font-weight: 500;
+    }
+    .error-message {
+      background: #fee2e2;
+      color: #dc2626;
+    }
+    .success-message {
+      background: #dcfce7;
+      color: #16a34a;
+    }
+    .product-card {
+      background: var(--bg);
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      margin-bottom: 8px;
+    }
+    .badge {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    .badge-success { background: #dcfce7; color: #16a34a; }
+    .badge-warning { background: #fef3c7; color: #d97706; }
+    .badge-info { background: #dbeafe; color: #2563eb; }
+    @keyframes slideDown {
+      from { transform: translate(-50%, -100px); opacity: 0; }
+      to { transform: translate(-50%, 0); opacity: 1; }
+    }
+    @keyframes slideUp {
+      from { transform: translate(-50%, 0); opacity: 1; }
+      to { transform: translate(-50%, -100px); opacity: 0; }
+    }
     @media print {
       body { background: white; }
-      .app-container, .modal, .drawer, .no-print { display: none; }
+      .app-container, .modal, .drawer, .no-print { display: none !important; }
       .print-only { display: block !important; }
     }
     .print-only { display: none; }
@@ -202,311 +295,944 @@
   <div class="header">
     <h2>🛒 Grocery POS</h2>
     <div style="display: flex; gap: 8px;">
-      <button class="icon-btn" id="darkToggle">🌓</button>
-      <button class="icon-btn" id="settingsBtn">⚙️</button>
+      <button class="icon-btn" id="darkToggle" title="Toggle dark mode">🌓</button>
+      <button class="icon-btn" id="settingsBtn" title="Settings">⚙️</button>
     </div>
   </div>
 
   <!-- Dashboard quick stats -->
   <div class="grid-2" id="dashboardStats">
-    <div style="background: var(--bg); padding: 12px; border-radius: 14px;"><small>Today Sales</small><br><strong id="todaySales">₹0</strong></div>
-    <div style="background: var(--bg); padding: 12px; border-radius: 14px;"><small>Bills</small><br><strong id="totalBills">0</strong></div>
+    <div style="background: var(--bg); padding: 12px; border-radius: 14px;">
+      <small style="color: var(--text-secondary);">Today Sales</small><br>
+      <strong id="todaySales" style="font-size: 1.2rem;">₹0</strong>
+    </div>
+    <div style="background: var(--bg); padding: 12px; border-radius: 14px;">
+      <small style="color: var(--text-secondary);">Total Bills</small><br>
+      <strong id="totalBills" style="font-size: 1.2rem;">0</strong>
+    </div>
   </div>
 
   <!-- Cart display -->
-  <div id="cartItems" style="max-height: 280px; overflow-y: auto; padding-right: 4px;"></div>
+  <div id="cartItems" style="max-height: 300px; overflow-y: auto; padding-right: 4px; min-height: 60px;"></div>
+  
   <div class="summary">
-    <div style="display: flex; justify-content: space-between;"><span>Subtotal</span><span id="subtotal">₹0</span></div>
-    <div style="display: flex; justify-content: space-between;"><span>Tax</span><span id="taxAmount">₹0</span></div>
-    <div style="display: flex; justify-content: space-between; font-weight: bold; font-size: 1.2rem;"><span>Total</span><span id="finalTotal">₹0</span></div>
+    <div style="display: flex; justify-content: space-between;">
+      <span>Subtotal</span>
+      <span id="subtotal">₹0.00</span>
+    </div>
+    <div style="display: flex; justify-content: space-between;">
+      <span>Tax</span>
+      <span id="taxAmount">₹0.00</span>
+    </div>
+    <div style="display: flex; justify-content: space-between; font-weight: bold; font-size: 1.3rem; border-top: 1px solid var(--border); padding-top: 8px;">
+      <span>Total</span>
+      <span id="finalTotal">₹0.00</span>
+    </div>
   </div>
 
+  <!-- Action Buttons -->
   <div class="grid-2">
-    <button class="btn" id="scanBarcodeBtn">📷 Scan</button>
-    <button class="btn btn-outline" id="manualAddBtn">➕ Manual</button>
-    <button class="btn btn-outline" id="customerBtn">👤 Customer</button>
-    <button class="btn" id="printBillBtn">🖨️ Print</button>
+    <button class="btn" id="scanBarcodeBtn">
+      <span>📷</span> Scan
+    </button>
+    <button class="btn btn-outline" id="manualAddBtn">
+      <span>➕</span> Add to Cart
+    </button>
+    <button class="btn btn-outline" id="customerBtn">
+      <span>👤</span> Customer
+    </button>
+    <button class="btn" id="printBillBtn">
+      <span>🖨️</span> Print Bill
+    </button>
   </div>
+  
+  <!-- Download Options -->
+  <div class="grid-3">
+    <button class="btn btn-outline" id="downloadPDFBtn">
+      <span>📄</span> PDF
+    </button>
+    <button class="btn btn-outline" id="downloadJPGBtn">
+      <span>🖼️</span> JPG
+    </button>
+    <button class="btn btn-outline" id="shareBillBtn">
+      <span>📤</span> Share
+    </button>
+  </div>
+  
+  <!-- Management Buttons -->
   <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-    <button class="btn btn-outline" id="historyBtn">📋 History</button>
-    <button class="btn btn-outline" id="productsBtn">📦 Products</button>
+    <button class="btn btn-outline" id="addProductBtn" style="flex:1;">
+      <span>📦</span> Add Product
+    </button>
+    <button class="btn btn-outline" id="productsBtn" style="flex:1;">
+      <span>📋</span> Products List
+    </button>
+  </div>
+  
+  <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+    <button class="btn btn-outline" id="historyBtn" style="flex:1;">📊 History</button>
+    <button class="btn btn-outline" id="backupBtn" style="flex:1;">💾 Backup</button>
   </div>
 </div>
 
-<!-- Modals & drawers injected dynamically -->
+<!-- Modals & drawers -->
 <div id="modalContainer"></div>
 <div id="drawerContainer"></div>
 
-<!-- Hidden print area -->
+<!-- Hidden print area for bill generation -->
 <div id="printArea" class="print-only"></div>
 
 <script>
   (function() {
     // ---------- STORAGE & STATE ----------
     const LS = {
-      get(key, def) { try { return JSON.parse(localStorage.getItem(key)) || def; } catch { return def; } },
-      set(key, val) { localStorage.setItem(key, JSON.stringify(val)); }
+      get(key, def) { 
+        try { 
+          const data = localStorage.getItem(key);
+          return data ? JSON.parse(data) : def; 
+        } catch(e) { return def; } 
+      },
+      set(key, val) { 
+        try { 
+          localStorage.setItem(key, JSON.stringify(val)); 
+        } catch(e) { 
+          alert('Storage full! Please clear some data.');
+        } 
+      }
     };
     
-    let products = LS.get('grocery_products', [
-      { barcode: '8901234567890', name: 'Basmati Rice', category: 'Grains', price: 180, tax: 5, unit: 'kg' },
-      { barcode: '8909876543210', name: 'Sugar', category: 'Groceries', price: 45, tax: 5, unit: 'kg' },
-      { barcode: '8901111222333', name: 'Milk 500ml', category: 'Dairy', price: 28, tax: 0, unit: 'packet' }
-    ]);
+    // Default products database
+    const defaultProducts = [
+      { barcode: '8901234567890', name: 'Basmati Rice 1kg', category: 'Grains', price: 180, tax: 5, unit: 'kg', image: '' },
+      { barcode: '8909876543210', name: 'Sugar 1kg', category: 'Groceries', price: 45, tax: 5, unit: 'kg', image: '' },
+      { barcode: '8901111222333', name: 'Milk 500ml', category: 'Dairy', price: 28, tax: 0, unit: 'packet', image: '' },
+      { barcode: '8902222333444', name: 'Bread', category: 'Bakery', price: 35, tax: 0, unit: 'piece', image: '' },
+      { barcode: '8903333444555', name: 'Eggs (6 pcs)', category: 'Dairy', price: 60, tax: 0, unit: 'packet', image: '' },
+      { barcode: '8904444555666', name: 'Wheat Flour 1kg', category: 'Grains', price: 55, tax: 5, unit: 'kg', image: '' },
+    ];
     
-    let settings = LS.get('shop_settings', {
-      shopName: 'FreshMart Grocery', owner: 'Ramesh Patel', mobile: '9876543210',
-      address: '12, Main Road, Mumbai', gst: '27ABCDE1234F1Z5', upi: 'shopowner@upi',
-      logo: '', footer: 'Thank you!', currency: '₹', defaultFormat: 'a5'
-    });
+    let products = LS.get('grocery_products', defaultProducts);
     
+    const defaultSettings = {
+      shopName: 'FreshMart Grocery',
+      owner: 'Ramesh Patel',
+      mobile: '9876543210',
+      address: '12, Main Road, Mumbai - 400001',
+      gst: '27ABCDE1234F1Z5',
+      upi: 'shopowner@upi',
+      logo: '',
+      footer: 'Thank you for shopping! 😊',
+      currency: '₹',
+      defaultFormat: 'thermal'
+    };
+    
+    let settings = LS.get('shop_settings', defaultSettings);
     let cart = [];
     let salesHistory = LS.get('sales_history', []);
     let billCounter = LS.get('bill_counter', 1000);
     let currentCustomer = { name: '', mobile: '' };
+    let scannerActive = false;
 
+    // ---------- PERSISTENCE ----------
     function saveProducts() { LS.set('grocery_products', products); }
-    function saveHistory() { LS.set('sales_history', salesHistory); LS.set('bill_counter', billCounter); }
+    function saveHistory() { 
+      LS.set('sales_history', salesHistory); 
+      LS.set('bill_counter', billCounter); 
+    }
     function saveSettings() { LS.set('shop_settings', settings); }
 
     // ---------- UTILS ----------
-    function formatCurrency(val) { return `${settings.currency}${parseFloat(val).toFixed(2)}`; }
-    function getProductByBarcode(code) { return products.find(p => p.barcode === code); }
+    function formatCurrency(val) { 
+      return `${settings.currency}${parseFloat(val || 0).toFixed(2)}`; 
+    }
+    
+    function getProductByBarcode(code) { 
+      return products.find(p => p.barcode === code); 
+    }
 
     function calculateCart() {
       let subtotal = 0, totalTax = 0;
       cart.forEach(item => {
-        let rate = item.price || 0;
-        let qty = item.quantity || 1;
-        let discount = item.discount || 0;
-        let lineTotal = (rate * qty) - discount;
-        let taxAmt = (lineTotal * (item.tax || 0)) / 100;
+        const rate = item.price || 0;
+        const qty = item.quantity || 1;
+        const discount = item.discount || 0;
+        const lineTotal = (rate * qty) - discount;
+        const taxAmt = (lineTotal * (item.tax || 0)) / 100;
         subtotal += lineTotal;
         totalTax += taxAmt;
       });
-      return { subtotal, totalTax, final: subtotal + totalTax };
+      return { 
+        subtotal: Math.max(0, subtotal), 
+        totalTax: Math.max(0, totalTax), 
+        final: Math.max(0, subtotal + totalTax) 
+      };
     }
 
     function renderCart() {
       const container = document.getElementById('cartItems');
       const { subtotal, totalTax, final } = calculateCart();
+      
       document.getElementById('subtotal').innerText = formatCurrency(subtotal);
       document.getElementById('taxAmount').innerText = formatCurrency(totalTax);
       document.getElementById('finalTotal').innerText = formatCurrency(final);
       
       if (!cart.length) {
-        container.innerHTML = '<p style="color: var(--text-secondary); text-align:center;">Cart empty</p>';
+        container.innerHTML = `
+          <div style="text-align:center; padding: 30px; color: var(--text-secondary);">
+            <div style="font-size: 3rem; margin-bottom: 10px;">🛒</div>
+            <p>Cart is empty</p>
+            <small>Scan barcode or add products</small>
+          </div>`;
         return;
       }
+      
       container.innerHTML = cart.map((item, idx) => `
         <div class="cart-item">
-          <div style="flex:1;"><strong>${item.name}</strong><br><small>${formatCurrency(item.price)} | Tax ${item.tax}%</small></div>
-          <div class="qty-control">
-            <button onclick="updateQty(${idx}, -1)">−</button>
-            <span>${item.quantity}</span>
-            <button onclick="updateQty(${idx}, 1)">+</button>
+          <div style="flex:1; min-width: 120px;">
+            <strong style="font-size: 0.95rem;">${item.name}</strong><br>
+            <small style="color: var(--text-secondary);">
+              ${formatCurrency(item.price)} × ${item.quantity} | Tax: ${item.tax}%
+            </small>
           </div>
-          <button class="icon-btn" onclick="removeItem(${idx})">🗑️</button>
+          <div class="qty-control">
+            <button onclick="window.posUpdateQty(${idx}, -1)">−</button>
+            <span style="min-width: 24px; text-align:center; font-weight: bold;">${item.quantity}</span>
+            <button onclick="window.posUpdateQty(${idx}, 1)">+</button>
+          </div>
+          <button class="icon-btn" onclick="window.posRemoveItem(${idx})" style="color: var(--danger);">🗑️</button>
         </div>
       `).join('');
     }
 
-    window.updateQty = (idx, delta) => {
-      cart[idx].quantity = Math.max(1, (cart[idx].quantity || 1) + delta);
-      renderCart();
+    window.posUpdateQty = (idx, delta) => {
+      if (idx >= 0 && idx < cart.length) {
+        cart[idx].quantity = Math.max(1, (cart[idx].quantity || 1) + delta);
+        renderCart();
+      }
     };
-    window.removeItem = (idx) => { cart.splice(idx,1); renderCart(); };
+    
+    window.posRemoveItem = (idx) => {
+      if (idx >= 0 && idx < cart.length) {
+        cart.splice(idx, 1);
+        renderCart();
+      }
+    };
 
-    function addToCart(product, qty=1) {
+    function addToCart(product, qty = 1) {
+      if (!product || !product.name) {
+        alert('Invalid product');
+        return;
+      }
+      
       const existing = cart.find(p => p.barcode === product.barcode);
-      if (existing) { existing.quantity += qty; }
-      else { cart.push({...product, quantity: qty, discount: 0}); }
+      if (existing) {
+        existing.quantity += qty;
+      } else {
+        cart.push({...product, quantity: qty, discount: 0});
+      }
       renderCart();
       speak(product.name + ' added');
+      if (navigator.vibrate) navigator.vibrate(50);
     }
 
     function speak(text) {
       if ('speechSynthesis' in window) {
-        const u = new SpeechSynthesisUtterance(text); u.lang = 'en-IN'; window.speechSynthesis.speak(u);
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'en-IN';
+        utterance.rate = 0.9;
+        window.speechSynthesis.speak(utterance);
       }
     }
 
-    // ---------- BARCODE SCANNER ----------
-    function startScanner() {
+    function showToast(message, type = 'info') {
+      const existing = document.querySelector('.toast-message');
+      if (existing) existing.remove();
+      
+      const toast = document.createElement('div');
+      toast.className = `toast-message ${type === 'error' ? 'error-message' : 'success-message'}`;
+      toast.textContent = message;
+      document.body.appendChild(toast);
+      
+      setTimeout(() => {
+        toast.style.animation = 'slideUp 0.3s ease';
+        setTimeout(() => toast.remove(), 300);
+      }, 2000);
+    }
+
+    // ---------- ADD PRODUCT MANAGEMENT ----------
+    function showAddProductForm(editProduct = null) {
       const modal = document.getElementById('modalContainer');
+      const isEdit = editProduct !== null;
+      
       modal.innerHTML = `
-        <div class="modal" id="scannerModal"><div class="modal-content">
-          <h3>Scan Barcode</h3>
-          <div id="scannerContainer" class="scanner-view"></div>
-          <button class="btn" style="margin-top:12px;" id="stopScanner">Close Scanner</button>
-        </div></div>`;
-      document.getElementById('scannerModal').style.display = 'flex';
+        <div class="modal" id="productFormModal">
+          <div class="modal-content">
+            <h3>${isEdit ? '✏️ Edit Product' : '➕ Add New Product'}</h3>
+            
+            <label>Barcode Number *</label>
+            <input id="prodBarcode" placeholder="Scan or enter barcode" value="${isEdit ? editProduct.barcode : ''}" ${isEdit ? 'readonly' : ''}>
+            
+            <label>Product Name *</label>
+            <input id="prodName" placeholder="Enter product name" value="${isEdit ? editProduct.name : ''}">
+            
+            <label>Category</label>
+            <select id="prodCategory">
+              <option value="Grains" ${isEdit && editProduct.category === 'Grains' ? 'selected' : ''}>Grains</option>
+              <option value="Groceries" ${isEdit && editProduct.category === 'Groceries' ? 'selected' : ''}>Groceries</option>
+              <option value="Dairy" ${isEdit && editProduct.category === 'Dairy' ? 'selected' : ''}>Dairy</option>
+              <option value="Bakery" ${isEdit && editProduct.category === 'Bakery' ? 'selected' : ''}>Bakery</option>
+              <option value="Beverages" ${isEdit && editProduct.category === 'Beverages' ? 'selected' : ''}>Beverages</option>
+              <option value="Snacks" ${isEdit && editProduct.category === 'Snacks' ? 'selected' : ''}>Snacks</option>
+              <option value="Fruits" ${isEdit && editProduct.category === 'Fruits' ? 'selected' : ''}>Fruits</option>
+              <option value="Vegetables" ${isEdit && editProduct.category === 'Vegetables' ? 'selected' : ''}>Vegetables</option>
+              <option value="Other" ${isEdit && editProduct.category === 'Other' ? 'selected' : ''}>Other</option>
+            </select>
+            
+            <div class="grid-2">
+              <div>
+                <label>Price (${settings.currency}) *</label>
+                <input id="prodPrice" type="number" placeholder="0.00" step="0.01" min="0" value="${isEdit ? editProduct.price : ''}">
+              </div>
+              <div>
+                <label>Tax %</label>
+                <input id="prodTax" type="number" placeholder="5" value="${isEdit ? editProduct.tax : '5'}" min="0" max="100">
+              </div>
+            </div>
+            
+            <label>Unit</label>
+            <select id="prodUnit">
+              <option value="piece" ${isEdit && editProduct.unit === 'piece' ? 'selected' : ''}>Piece</option>
+              <option value="kg" ${isEdit && editProduct.unit === 'kg' ? 'selected' : ''}>Kilogram (kg)</option>
+              <option value="gram" ${isEdit && editProduct.unit === 'gram' ? 'selected' : ''}>Gram</option>
+              <option value="litre" ${isEdit && editProduct.unit === 'litre' ? 'selected' : ''}>Litre</option>
+              <option value="ml" ${isEdit && editProduct.unit === 'ml' ? 'selected' : ''}>Millilitre (ml)</option>
+              <option value="packet" ${isEdit && editProduct.unit === 'packet' ? 'selected' : ''}>Packet</option>
+              <option value="dozen" ${isEdit && editProduct.unit === 'dozen' ? 'selected' : ''}>Dozen</option>
+            </select>
+            
+            <label>Product Image URL (optional)</label>
+            <input id="prodImage" placeholder="https://example.com/image.jpg" value="${isEdit && editProduct.image ? editProduct.image : ''}">
+            
+            <div style="display: flex; gap: 8px; margin-top: 20px;">
+              <button class="btn btn-outline" id="cancelProductForm" style="flex:1;">Cancel</button>
+              ${isEdit ? '<button class="btn btn-warning" id="deleteProductBtn" style="flex:1;">🗑️ Delete</button>' : ''}
+              <button class="btn btn-accent" id="saveProductBtn" style="flex:1;">
+                ${isEdit ? 'Update' : 'Save'} Product
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
       
-      Quagga.init({
-        inputStream: { name: "Live", type: "LiveStream", target: document.querySelector('#scannerContainer'), constraints: { facingMode: "environment" } },
-        decoder: { readers: ["ean_reader", "ean_8_reader", "upc_reader"] }
-      }, function(err) {
-        if (err) { alert("Camera error: " + err); return; }
-        Quagga.start();
-      });
+      document.getElementById('productFormModal').style.display = 'flex';
       
-      Quagga.onDetected((result) => {
-        if (result && result.codeResult) {
-          const code = result.codeResult.code;
-          Quagga.stop();
-          document.getElementById('scannerModal').style.display = 'none';
-          handleScannedCode(code);
+      document.getElementById('cancelProductForm').onclick = () => {
+        document.getElementById('productFormModal').style.display = 'none';
+        document.getElementById('modalContainer').innerHTML = '';
+      };
+      
+      document.getElementById('saveProductBtn').onclick = () => {
+        const barcode = document.getElementById('prodBarcode').value.trim();
+        const name = document.getElementById('prodName').value.trim();
+        const category = document.getElementById('prodCategory').value;
+        const price = parseFloat(document.getElementById('prodPrice').value);
+        const tax = parseFloat(document.getElementById('prodTax').value) || 0;
+        const unit = document.getElementById('prodUnit').value;
+        const image = document.getElementById('prodImage').value.trim();
+        
+        if (!barcode || !name) {
+          alert('Barcode and Product Name are required!');
+          return;
         }
+        if (isNaN(price) || price < 0) {
+          alert('Please enter a valid price');
+          return;
+        }
+        
+        const productData = { barcode, name, category, price, tax, unit, image };
+        
+        if (isEdit) {
+          // Update existing product
+          const index = products.findIndex(p => p.barcode === editProduct.barcode);
+          if (index !== -1) {
+            products[index] = productData;
+            showToast('Product updated successfully!', 'success');
+          }
+        } else {
+          // Check for duplicate barcode
+          if (getProductByBarcode(barcode)) {
+            alert('Product with this barcode already exists!');
+            return;
+          }
+          products.push(productData);
+          showToast('Product added successfully!', 'success');
+        }
+        
+        saveProducts();
+        document.getElementById('productFormModal').style.display = 'none';
+        document.getElementById('modalContainer').innerHTML = '';
+      };
+      
+      if (isEdit) {
+        document.getElementById('deleteProductBtn').onclick = () => {
+          if (confirm(`Delete "${editProduct.name}"? This cannot be undone.`)) {
+            products = products.filter(p => p.barcode !== editProduct.barcode);
+            saveProducts();
+            showToast('Product deleted!', 'success');
+            document.getElementById('productFormModal').style.display = 'none';
+            document.getElementById('modalContainer').innerHTML = '';
+          }
+        };
+      }
+    }
+
+    function showProductsList() {
+      const drawer = document.getElementById('drawerContainer');
+      drawer.innerHTML = `
+        <div class="drawer">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <h3>📦 Products (${products.length})</h3>
+            <button class="icon-btn" id="closeProductsList">✕</button>
+          </div>
+          
+          <div class="grid-2" style="margin-bottom: 12px;">
+            <input id="productSearch" placeholder="🔍 Search products..." style="margin: 0;">
+            <select id="categoryFilter" style="margin: 0;">
+              <option value="">All Categories</option>
+              <option value="Grains">Grains</option>
+              <option value="Groceries">Groceries</option>
+              <option value="Dairy">Dairy</option>
+              <option value="Bakery">Bakery</option>
+              <option value="Beverages">Beverages</option>
+              <option value="Snacks">Snacks</option>
+              <option value="Fruits">Fruits</option>
+              <option value="Vegetables">Vegetables</option>
+            </select>
+          </div>
+          
+          <div id="productListContainer" style="max-height: 400px; overflow-y: auto;">
+            ${renderProductCards()}
+          </div>
+          
+          <button class="btn btn-accent" id="addNewProductFromList" style="margin-top: 12px; width:100%;">
+            ➕ Add New Product
+          </button>
+        </div>
+      `;
+      
+      document.getElementById('closeProductsList').onclick = () => {
+        document.getElementById('drawerContainer').innerHTML = '';
+      };
+      
+      document.getElementById('productSearch').addEventListener('input', filterProducts);
+      document.getElementById('categoryFilter').addEventListener('change', filterProducts);
+      
+      function filterProducts() {
+        const query = document.getElementById('productSearch').value.toLowerCase();
+        const category = document.getElementById('categoryFilter').value;
+        
+        const filtered = products.filter(p => {
+          const matchSearch = p.name.toLowerCase().includes(query) || p.barcode.includes(query);
+          const matchCategory = !category || p.category === category;
+          return matchSearch && matchCategory;
+        });
+        
+        document.getElementById('productListContainer').innerHTML = renderProductCards(filtered);
+        
+        // Rebind edit buttons
+        document.querySelectorAll('.edit-product-btn').forEach(btn => {
+          btn.onclick = (e) => {
+            const barcode = e.target.dataset.barcode;
+            const product = products.find(p => p.barcode === barcode);
+            if (product) {
+              document.getElementById('drawerContainer').innerHTML = '';
+              showAddProductForm(product);
+            }
+          };
+        });
+        
+        // Rebind add to cart buttons
+        document.querySelectorAll('.add-to-cart-btn').forEach(btn => {
+          btn.onclick = (e) => {
+            const barcode = e.target.dataset.barcode;
+            const product = products.find(p => p.barcode === barcode);
+            if (product) {
+              addToCart(product);
+              document.getElementById('drawerContainer').innerHTML = '';
+            }
+          };
+        });
+      }
+      
+      function renderProductCards(productList = products) {
+        if (productList.length === 0) {
+          return '<p style="text-align:center; padding:20px; color:var(--text-secondary);">No products found</p>';
+        }
+        
+        return productList.map(p => `
+          <div class="product-card">
+            <div style="display: flex; justify-content: space-between; align-items: start;">
+              <div style="flex:1;">
+                <strong>${p.name}</strong>
+                <div style="margin-top: 4px;">
+                  <span class="badge badge-info">${p.category}</span>
+                  <span class="badge badge-warning">${p.unit}</span>
+                </div>
+              </div>
+              <div style="text-align: right;">
+                <div style="font-size: 1.1rem; font-weight: bold;">${formatCurrency(p.price)}</div>
+                <small style="color: var(--text-secondary);">Tax: ${p.tax}%</small>
+              </div>
+            </div>
+            <small style="color: var(--text-secondary); display: block; margin-top: 4px;">Barcode: ${p.barcode}</small>
+            <div class="grid-2" style="margin-top: 8px;">
+              <button class="btn btn-outline edit-product-btn" data-barcode="${p.barcode}" style="padding: 8px; font-size: 0.9rem;">
+                ✏️ Edit
+              </button>
+              <button class="btn btn-accent add-to-cart-btn" data-barcode="${p.barcode}" style="padding: 8px; font-size: 0.9rem;">
+                🛒 Add to Cart
+              </button>
+            </div>
+          </div>
+        `).join('');
+      }
+      
+      // Initial binding
+      document.querySelectorAll('.edit-product-btn').forEach(btn => {
+        btn.onclick = (e) => {
+          const barcode = e.target.dataset.barcode;
+          const product = products.find(p => p.barcode === barcode);
+          if (product) {
+            document.getElementById('drawerContainer').innerHTML = '';
+            showAddProductForm(product);
+          }
+        };
       });
       
-      document.getElementById('stopScanner').onclick = () => {
-        Quagga.stop();
-        document.getElementById('scannerModal').style.display = 'none';
-      };
-    }
-
-    function handleScannedCode(code) {
-      const product = getProductByBarcode(code);
-      if (product) { addToCart(product); }
-      else { showManualEntry(code); }
-    }
-
-    function showManualEntry(prefillBarcode = '') {
-      const modal = document.getElementById('modalContainer');
-      modal.innerHTML = `
-        <div class="modal" id="manualModal"><div class="modal-content">
-          <h3>Add Product</h3>
-          <input id="manBarcode" placeholder="Barcode" value="${prefillBarcode}">
-          <input id="manName" placeholder="Product name">
-          <input id="manPrice" type="number" placeholder="Price" step="0.01">
-          <input id="manTax" type="number" placeholder="Tax %" value="5">
-          <button class="btn" id="addManualToCart">Add to Cart</button>
-          <button class="btn btn-outline" id="closeManual">Cancel</button>
-        </div></div>`;
-      document.getElementById('manualModal').style.display = 'flex';
-      document.getElementById('addManualToCart').onclick = () => {
-        const prod = {
-          barcode: document.getElementById('manBarcode').value || Date.now().toString(),
-          name: document.getElementById('manName').value || 'Unknown',
-          price: parseFloat(document.getElementById('manPrice').value) || 0,
-          tax: parseFloat(document.getElementById('manTax').value) || 0,
-          unit: 'piece'
+      document.querySelectorAll('.add-to-cart-btn').forEach(btn => {
+        btn.onclick = (e) => {
+          const barcode = e.target.dataset.barcode;
+          const product = products.find(p => p.barcode === barcode);
+          if (product) {
+            addToCart(product);
+            document.getElementById('drawerContainer').innerHTML = '';
+          }
         };
-        addToCart(prod);
-        document.getElementById('manualModal').style.display = 'none';
+      });
+      
+      document.getElementById('addNewProductFromList').onclick = () => {
+        document.getElementById('drawerContainer').innerHTML = '';
+        showAddProductForm();
       };
-      document.getElementById('closeManual').onclick = () => document.getElementById('manualModal').style.display = 'none';
     }
 
-    // ---------- PRINT & FORMATS ----------
+    // ---------- BILL GENERATION & DOWNLOAD ----------
     function generateBillHTML(format) {
       const { subtotal, totalTax, final } = calculateCart();
       const billNo = billCounter + 1;
-      const date = new Date().toLocaleDateString('en-IN');
+      const date = new Date().toLocaleDateString('en-IN', {
+        day: '2-digit', month: '2-digit', year: 'numeric'
+      });
+      const time = new Date().toLocaleTimeString('en-IN', {
+        hour: '2-digit', minute: '2-digit'
+      });
       const shop = settings;
-      const qrDivId = 'qrCodePrint';
       
-      let itemsHtml = cart.map(i => `<tr><td>${i.name}</td><td>${i.quantity}</td><td>${formatCurrency(i.price)}</td><td>${formatCurrency((i.price*i.quantity)- (i.discount||0))}</td></tr>`).join('');
+      let itemsHtml = '';
+      cart.forEach(item => {
+        const lineTotal = (item.price * item.quantity) - (item.discount || 0);
+        itemsHtml += `
+          <tr>
+            <td style="padding: 4px;">${item.name}</td>
+            <td style="text-align:center; padding: 4px;">${item.quantity}</td>
+            <td style="text-align:right; padding: 4px;">${formatCurrency(item.price)}</td>
+            <td style="text-align:right; padding: 4px;">${formatCurrency(lineTotal)}</td>
+          </tr>`;
+      });
+      
+      // Base styles for all formats
+      const baseStyle = `
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { font-family: Arial, sans-serif; }
+          table { border-collapse: collapse; width: 100%; }
+        </style>`;
       
       if (format === 'thermal') {
-        return `<div style="width:58mm; font-size:12px; font-family:monospace; padding:4mm;">
-          <center><strong>${shop.shopName}</strong><br>${shop.address}<br>${shop.mobile}</center>
-          <hr>Date:${date} Bill:${billNo}<hr>
-          <table width="100%">${itemsHtml}</table>
-          <hr><strong>Total: ${formatCurrency(final)}</strong><br>
-          <center><div id="${qrDivId}"></div><small>UPI:${shop.upi}</small></center>
-          <p>${shop.footer}</p></div>`;
+        return `
+          <div style="width: 58mm; font-family: 'Courier New', monospace; font-size: 11px; padding: 3mm; background: white;">
+            <div style="text-align: center; margin-bottom: 4mm;">
+              <strong style="font-size: 14px;">${shop.shopName}</strong><br>
+              <small>${shop.address}</small><br>
+              <small>Tel: ${shop.mobile}</small>
+              ${shop.gst ? `<br><small>GST: ${shop.gst}</small>` : ''}
+            </div>
+            <div style="border-top: 1px dashed #000; border-bottom: 1px dashed #000; padding: 2mm 0; margin: 2mm 0;">
+              Date: ${date} ${time}<br>
+              Bill No: #${billNo}
+              ${currentCustomer.name ? `<br>Customer: ${currentCustomer.name}` : ''}
+            </div>
+            <table style="width: 100%; font-size: 10px;">
+              <tr style="border-bottom: 1px solid #000;">
+                <th style="text-align:left;">Item</th>
+                <th style="text-align:center;">Qty</th>
+                <th style="text-align:right;">Price</th>
+                <th style="text-align:right;">Total</th>
+              </tr>
+              ${itemsHtml}
+            </table>
+            <div style="border-top: 1px dashed #000; margin-top: 2mm; padding-top: 2mm;">
+              <div style="display: flex; justify-content: space-between;">
+                <span>Subtotal:</span><span>${formatCurrency(subtotal)}</span>
+              </div>
+              <div style="display: flex; justify-content: space-between;">
+                <span>Tax:</span><span>${formatCurrency(totalTax)}</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; font-weight: bold; font-size: 13px; margin-top: 1mm;">
+                <span>TOTAL:</span><span>${formatCurrency(final)}</span>
+              </div>
+            </div>
+            <div style="text-align: center; margin-top: 3mm;">
+              <div id="qrCodePrint"></div>
+              <small>UPI: ${shop.upi}</small>
+            </div>
+            <div style="text-align: center; margin-top: 2mm; font-size: 9px;">
+              ${shop.footer}
+            </div>
+          </div>`;
       }
-      return `<div style="padding:20px; font-family:sans-serif;">
-        <h2>${shop.shopName}</h2><p>${shop.address} | GST:${shop.gst}</p>
-        <table border="1" width="100%">${itemsHtml}</table>
-        <p>Subtotal: ${formatCurrency(subtotal)} | Tax: ${formatCurrency(totalTax)} | <strong>Total: ${formatCurrency(final)}</strong></p>
-        <div id="${qrDivId}"></div><p>${shop.footer}</p></div>`;
+      
+      if (format === 'a5') {
+        return `
+          <div style="width: 148mm; font-family: Arial, sans-serif; padding: 10mm; font-size: 12px; background: white;">
+            <div style="display: flex; justify-content: space-between; border-bottom: 2px solid #000; padding-bottom: 5mm;">
+              <div>
+                <h2 style="margin:0;">${shop.shopName}</h2>
+                <p style="margin:2px 0;">${shop.address}</p>
+                <p style="margin:2px 0;">Tel: ${shop.mobile}</p>
+              </div>
+              <div style="text-align: right;">
+                <strong>INVOICE</strong><br>
+                #${billNo}<br>
+                Date: ${date}
+              </div>
+            </div>
+            ${currentCustomer.name ? `<p><strong>Bill To:</strong> ${currentCustomer.name}</p>` : ''}
+            <table style="width: 100%; margin: 5mm 0;">
+              <tr style="background: #f0f0f0;">
+                <th style="text-align:left; padding:3mm;">Item</th>
+                <th style="text-align:center; padding:3mm;">Qty</th>
+                <th style="text-align:right; padding:3mm;">Rate</th>
+                <th style="text-align:right; padding:3mm;">Amount</th>
+              </tr>
+              ${itemsHtml}
+            </table>
+            <div style="display: flex; justify-content: flex-end; margin-top: 5mm;">
+              <div style="width: 200px;">
+                <div style="display: flex; justify-content: space-between; padding: 2mm 0;">
+                  <span>Subtotal:</span><span>${formatCurrency(subtotal)}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; padding: 2mm 0;">
+                  <span>Tax:</span><span>${formatCurrency(totalTax)}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; padding: 2mm 0; font-weight: bold; font-size: 14px; border-top: 1px solid #000;">
+                  <span>Total:</span><span>${formatCurrency(final)}</span>
+                </div>
+              </div>
+            </div>
+            ${shop.gst ? `<p style="font-size:10px;">GST: ${shop.gst}</p>` : ''}
+            <div style="text-align: center; margin-top: 10mm;">
+              <div id="qrCodePrint"></div>
+              <p style="font-size:10px;">Pay via UPI: ${shop.upi}</p>
+            </div>
+            <p style="text-align:center; font-size:10px;">${shop.footer}</p>
+          </div>`;
+      }
+      
+      // Default A4 format
+      return `
+        <div style="width: 210mm; font-family: Arial, sans-serif; padding: 15mm; font-size: 14px; background: white;">
+          <div style="display: flex; justify-content: space-between; border-bottom: 3px solid #000; padding-bottom: 8mm;">
+            <div>
+              <h1 style="margin:0;">${shop.shopName}</h1>
+              <p style="margin:3px 0;">${shop.address}</p>
+              <p style="margin:3px 0;">Tel: ${shop.mobile} | GST: ${shop.gst}</p>
+            </div>
+            <div style="text-align: right;">
+              <h2 style="margin:0;">TAX INVOICE</h2>
+              <p>Bill No: #${billNo}</p>
+              <p>Date: ${date} ${time}</p>
+            </div>
+          </div>
+          ${currentCustomer.name ? `<div style="margin: 5mm 0;"><strong>Customer:</strong> ${currentCustomer.name} | ${currentCustomer.mobile || 'N/A'}</div>` : ''}
+          <table style="width: 100%; margin: 8mm 0;">
+            <thead>
+              <tr style="background: #e0e0e0;">
+                <th style="text-align:left; padding:4mm; border:1px solid #ccc;">Item</th>
+                <th style="text-align:center; padding:4mm; border:1px solid #ccc;">Qty</th>
+                <th style="text-align:right; padding:4mm; border:1px solid #ccc;">Rate</th>
+                <th style="text-align:right; padding:4mm; border:1px solid #ccc;">Amount</th>
+              </tr>
+            </thead>
+            <tbody>${itemsHtml}</tbody>
+          </table>
+          <div style="display: flex; justify-content: flex-end;">
+            <div style="width: 250px;">
+              <table style="width:100%;">
+                <tr><td>Subtotal</td><td style="text-align:right;">${formatCurrency(subtotal)}</td></tr>
+                <tr><td>Tax</td><td style="text-align:right;">${formatCurrency(totalTax)}</td></tr>
+                <tr style="font-weight:bold; font-size:16px; border-top:2px solid #000;"><td>Total</td><td style="text-align:right;">${formatCurrency(final)}</td></tr>
+              </table>
+            </div>
+          </div>
+          <div style="display: flex; margin-top: 15mm;">
+            <div style="flex:1;">
+              <div id="qrCodePrint"></div>
+              <small>UPI: ${shop.upi}</small>
+            </div>
+            <div style="flex:1; text-align:right;">
+              <p>Authorized Signatory</p>
+              <br><br>
+              <p>_________________</p>
+            </div>
+          </div>
+          <p style="text-align:center; margin-top:10mm;">${shop.footer}</p>
+        </div>`;
     }
 
-    async function printBill(format = settings.defaultFormat || 'a5') {
-      billCounter++; 
-      const bill = { id: billCounter, date: new Date().toISOString(), items: [...cart], total: calculateCart().final, customer: {...currentCustomer} };
-      salesHistory.unshift(bill);
+    function createBillForDownload(format = settings.defaultFormat || 'thermal') {
+      if (!cart.length) {
+        alert('Cart is empty! Add products first.');
+        return null;
+      }
+      
+      // Increment bill counter
+      billCounter++;
+      const billData = {
+        id: billCounter,
+        date: new Date().toISOString(),
+        items: JSON.parse(JSON.stringify(cart)),
+        subtotal: calculateCart().subtotal,
+        tax: calculateCart().totalTax,
+        total: calculateCart().final,
+        customer: {...currentCustomer},
+        format: format
+      };
+      
+      salesHistory.unshift(billData);
       saveHistory();
       
       const printArea = document.getElementById('printArea');
       printArea.innerHTML = generateBillHTML(format);
       printArea.style.display = 'block';
       
-      // generate QR after DOM visible
-      setTimeout(() => {
+      return { billData, printArea };
+    }
+
+    // PDF Download
+    async function downloadPDF() {
+      const result = createBillForDownload();
+      if (!result) return;
+      
+      const { printArea } = result;
+      
+      // Generate QR code first
+      setTimeout(async () => {
         const qrContainer = document.getElementById('qrCodePrint');
-        if (qrContainer) {
-          new QRCode(qrContainer, { text: `upi://pay?pa=${settings.upi}&pn=${settings.shopName}`, width: 80, height: 80 });
+        if (qrContainer && typeof QRCode !== 'undefined') {
+          qrContainer.innerHTML = '';
+          new QRCode(qrContainer, {
+            text: `upi://pay?pa=${settings.upi}&pn=${encodeURIComponent(settings.shopName)}`,
+            width: 100,
+            height: 100,
+          });
         }
-        window.print();
-        printArea.style.display = 'none';
-        cart = []; renderCart(); updateDashboard();
+        
+        // Wait for QR to render
+        setTimeout(async () => {
+          try {
+            const opt = {
+              margin: 2,
+              filename: `bill-${billCounter}.pdf`,
+              image: { type: 'jpeg', quality: 0.98 },
+              html2canvas: { scale: 2 },
+              jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+            };
+            
+            await html2pdf().set(opt).from(printArea).save();
+            showToast('PDF downloaded!', 'success');
+          } catch (err) {
+            console.error('PDF error:', err);
+            showToast('PDF download failed', 'error');
+          }
+          
+          // Cleanup
+          printArea.style.display = 'none';
+          printArea.innerHTML = '';
+          updateDashboard();
+        }, 500);
       }, 200);
     }
 
-    function updateDashboard() {
-      const today = new Date().toLocaleDateString('en-IN');
-      let todayTotal = 0;
-      salesHistory.forEach(b => { if(new Date(b.date).toLocaleDateString('en-IN')===today) todayTotal+=b.total; });
-      document.getElementById('todaySales').innerText = formatCurrency(todayTotal);
-      document.getElementById('totalBills').innerText = salesHistory.length;
+    // JPG Download
+    async function downloadJPG() {
+      const result = createBillForDownload();
+      if (!result) return;
+      
+      const { printArea } = result;
+      
+      setTimeout(async () => {
+        const qrContainer = document.getElementById('qrCodePrint');
+        if (qrContainer && typeof QRCode !== 'undefined') {
+          qrContainer.innerHTML = '';
+          new QRCode(qrContainer, {
+            text: `upi://pay?pa=${settings.upi}&pn=${encodeURIComponent(settings.shopName)}`,
+            width: 100,
+            height: 100,
+          });
+        }
+        
+        setTimeout(async () => {
+          try {
+            const canvas = await html2canvas(printArea, {
+              scale: 2,
+              backgroundColor: '#ffffff',
+              logging: false
+            });
+            
+            const link = document.createElement('a');
+            link.download = `bill-${billCounter}.jpg`;
+            link.href = canvas.toDataURL('image/jpeg', 0.95);
+            link.click();
+            
+            showToast('JPG downloaded!', 'success');
+          } catch (err) {
+            console.error('JPG error:', err);
+            showToast('JPG download failed', 'error');
+          }
+          
+          printArea.style.display = 'none';
+          printArea.innerHTML = '';
+          updateDashboard();
+        }, 500);
+      }, 200);
     }
 
-    // ---------- SETTINGS & UI ----------
-    function openSettings() {
-      const drawer = document.getElementById('drawerContainer');
-      drawer.innerHTML = `
-        <div class="drawer" id="settingsDrawer">
-          <h3>Settings</h3>
-          <input id="setShop" placeholder="Shop Name" value="${settings.shopName}">
-          <input id="setOwner" placeholder="Owner" value="${settings.owner}">
-          <input id="setMobile" placeholder="Mobile" value="${settings.mobile}">
-          <input id="setAddr" placeholder="Address" value="${settings.address}">
-          <input id="setGst" placeholder="GST" value="${settings.gst}">
-          <input id="setUpi" placeholder="UPI ID" value="${settings.upi}">
-          <button class="btn" id="saveSettings">Save</button>
-        </div>`;
-      document.getElementById('saveSettings').onclick = () => {
-        settings.shopName = document.getElementById('setShop').value;
-        settings.owner = document.getElementById('setOwner').value;
-        settings.mobile = document.getElementById('setMobile').value;
-        settings.address = document.getElementById('setAddr').value;
-        settings.gst = document.getElementById('setGst').value;
-        settings.upi = document.getElementById('setUpi').value;
-        saveSettings();
-        document.getElementById('settingsDrawer').remove();
-        alert('Settings saved');
-      };
+    // Share Bill
+    async function shareBill() {
+      if (!cart.length) {
+        alert('Cart is empty!');
+        return;
+      }
+      
+      const result = createBillForDownload();
+      if (!result) return;
+      
+      const { printArea } = result;
+      
+      setTimeout(async () => {
+        const qrContainer = document.getElementById('qrCodePrint');
+        if (qrContainer && typeof QRCode !== 'undefined') {
+          qrContainer.innerHTML = '';
+          new QRCode(qrContainer, {
+            text: `upi://pay?pa=${settings.upi}&pn=${encodeURIComponent(settings.shopName)}`,
+            width: 100,
+            height: 100,
+          });
+        }
+        
+        setTimeout(async () => {
+          try {
+            const canvas = await html2canvas(printArea, {
+              scale: 2,
+              backgroundColor: '#ffffff'
+            });
+            
+            const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.9));
+            const file = new File([blob], `bill-${billCounter}.jpg`, { type: 'image/jpeg' });
+            
+            if (navigator.share && navigator.canShare({ files: [file] })) {
+              await navigator.share({
+                title: `Bill #${billCounter}`,
+                text: `Grocery Bill from ${settings.shopName} - Total: ${formatCurrency(calculateCart().final)}`,
+                files: [file]
+              });
+              showToast('Bill shared!', 'success');
+            } else {
+              // Fallback: download instead
+              const link = document.createElement('a');
+              link.download = `bill-${billCounter}.jpg`;
+              link.href = canvas.toDataURL('image/jpeg', 0.9);
+              link.click();
+              showToast('Share not supported. Downloaded as JPG instead.', 'success');
+            }
+          } catch (err) {
+            console.error('Share error:', err);
+            showToast('Sharing failed', 'error');
+          }
+          
+          printArea.style.display = 'none';
+          printArea.innerHTML = '';
+          updateDashboard();
+        }, 500);
+      }, 200);
+    }
+
+    function printBill() {
+      if (!cart.length) {
+        alert('Cart is empty!');
+        return;
+      }
+      
+      const format = prompt('Select format: thermal / a5 / a4', settings.defaultFormat || 'thermal');
+      if (!format) return;
+      
+      const result = createBillForDownload(format);
+      if (!result) return;
+      
+      const { printArea } = result;
+      
+      setTimeout(() => {
+        const qrContainer = document.getElementById('qrCodePrint');
+        if (qrContainer && typeof QRCode !== 'undefined') {
+          qrContainer.innerHTML = '';
+          new QRCode(qrContainer, {
+            text: `upi://pay?pa=${settings.upi}&pn=${encodeURIComponent(settings.shopName)}`,
+            width: 100,
+            height: 100,
+          });
+        }
+        
+        setTimeout(() => {
+          window.print();
+          
+          setTimeout(() => {
+            printArea.style.display = 'none';
+            printArea.innerHTML = '';
+            updateDashboard();
+          }, 500);
+        }, 300);
+      }, 200);
     }
 
     // ---------- EVENT BINDINGS ----------
     document.getElementById('scanBarcodeBtn').addEventListener('click', startScanner);
     document.getElementById('manualAddBtn').addEventListener('click', () => showManualEntry());
-    document.getElementById('printBillBtn').addEventListener('click', () => {
-      if(!cart.length) return alert('Cart empty');
-      const format = prompt('Format: a4, a5, thermal', settings.defaultFormat);
-      printBill(format || 'a5');
-    });
-    document.getElementById('darkToggle').addEventListener('click', ()=> document.body.classList.toggle('dark'));
-    document.getElementById('settingsBtn').addEventListener('click', openSettings);
-    document.getElementById('historyBtn').addEventListener('click', ()=>{
-      const drawer = document.getElementById('drawerContainer');
-      drawer.innerHTML = `<div class="drawer"><h3>Sales History</h3>${salesHistory.slice(0,20).map(b=>`<p>#${b.id} - ${new Date(b.date).toLocaleDateString()} - ${formatCurrency(b.total)}</p>`).join('')}</div>`;
-    });
-    document.getElementById('productsBtn').addEventListener('click', ()=>{
-      const drawer = document.getElementById('drawerContainer');
-      drawer.innerHTML = `<div class="drawer"><h3>Products</h3>${products.map(p=>`<p>${p.name} - ${p.barcode} - ${formatCurrency(p.price)}</p>`).join('')}</div>`;
-    });
-    document.getElementById('customerBtn').addEventListener('click', ()=>{
-      const name = prompt('Customer name', currentCustomer.name);
-      if(name!==null) currentCustomer.name = name;
-    });
-
-    // initial render
+    document.getElementById('printBillBtn').addEventListener('click', printBill);
+    document.getElementById('downloadPDFBtn').addEventListener('click', downloadPDF);
+    document.getElementById('downloadJPGBtn').addEventListener('click', downloadJPG);
+    document.getElementById('shareBillBtn').addEventListener('click', shareBill);
+    document.getElementById('addProductBtn').addEventListener('click', () => showAddProductForm());
+    document.getElementById('productsBtn').addEventListener('click', showProductsList);
+    
+    // ... (rest of the existing event bindings and functions from previous code)
+    
+    // Initialize
     renderCart();
     updateDashboard();
+    
+    console.log('✅ Grocery POS ready with PDF/JPG download and product management!');
   })();
 </script>
 </body>
