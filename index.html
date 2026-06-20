@@ -255,6 +255,7 @@
       border-top: 2px solid var(--accent);
       padding-top: 12px;
       margin-top: 4px;
+      color: var(--accent);
     }
     .hidden {
       display: none !important;
@@ -368,19 +369,18 @@
       object-fit: cover;
       border: 2px solid var(--border);
     }
-    .tab-btn {
-      background: transparent;
-      border: none;
-      padding: 10px 16px;
-      border-radius: 10px;
-      font-weight: 600;
-      cursor: pointer;
-      color: var(--text-secondary);
-      transition: all 0.2s;
+    .qr-container {
+      text-align: center;
+      padding: 10px;
+      background: white;
+      border-radius: 12px;
+      display: inline-block;
     }
-    .tab-btn.active {
-      background: var(--accent);
-      color: white;
+    .qr-amount {
+      font-weight: bold;
+      font-size: 1.1rem;
+      margin-top: 8px;
+      color: #000;
     }
     .search-box {
       position: relative;
@@ -470,7 +470,7 @@
       <span id="taxAmount">₹0.00</span>
     </div>
     <div class="summary-row total-row">
-      <span>Total Amount</span>
+      <span>💳 Total Amount</span>
       <span id="finalTotal">₹0.00</span>
     </div>
   </div>
@@ -519,9 +519,6 @@
 
 <!-- Hidden print area -->
 <div id="printArea" class="print-only"></div>
-
-<!-- Hidden canvas for image generation -->
-<canvas id="hiddenCanvas" style="display: none;"></canvas>
 
 <script>
   (function() {
@@ -623,6 +620,75 @@
         totalTax: Math.max(0, totalTax), 
         final: Math.max(0, subtotal + totalTax) 
       };
+    }
+
+    // ============ UPI QR CODE GENERATOR WITH AMOUNT ============
+    function generateUPIString(amount = null) {
+      const { final } = calculateCart();
+      const payAmount = amount || final;
+      
+      // UPI deep link format with amount
+      let upiString = `upi://pay?pa=${settings.upi}&pn=${encodeURIComponent(settings.shopName)}`;
+      
+      // Add amount if available
+      if (payAmount > 0) {
+        upiString += `&am=${payAmount.toFixed(2)}`;
+      }
+      
+      // Add currency (INR default)
+      upiString += `&cu=INR`;
+      
+      // Add transaction note
+      upiString += `&tn=Payment for bill at ${encodeURIComponent(settings.shopName)}`;
+      
+      return upiString;
+    }
+
+    function generateQRCode(containerId, amount = null) {
+      const container = document.getElementById(containerId);
+      if (!container || typeof QRCode === 'undefined') return;
+      
+      // Clear previous QR
+      container.innerHTML = '';
+      
+      const upiString = generateUPIString(amount);
+      
+      // Create wrapper for QR and amount display
+      const wrapper = document.createElement('div');
+      wrapper.className = 'qr-container';
+      wrapper.style.textAlign = 'center';
+      
+      // Add label
+      const label = document.createElement('p');
+      label.style.cssText = 'font-size:12px;font-weight:bold;margin-bottom:5px;color:#000;';
+      label.textContent = 'Scan to Pay';
+      wrapper.appendChild(label);
+      
+      // Generate QR code
+      new QRCode(container, {
+        text: upiString,
+        width: 120,
+        height: 120,
+        colorDark: "#000000",
+        colorLight: "#ffffff",
+        correctLevel: QRCode.CorrectLevel.H
+      });
+      
+      // Add amount display below QR
+      const amountDisplay = document.createElement('div');
+      amountDisplay.className = 'qr-amount';
+      const displayAmount = amount || calculateCart().final;
+      amountDisplay.textContent = `Amount: ${formatCurrency(displayAmount)}`;
+      amountDisplay.style.cssText = 'margin-top:8px;font-weight:bold;font-size:14px;color:#000;';
+      container.appendChild(amountDisplay);
+      
+      // Add UPI ID
+      const upiIdDisplay = document.createElement('small');
+      upiIdDisplay.style.cssText = 'display:block;margin-top:4px;color:#666;font-size:10px;';
+      upiIdDisplay.textContent = `UPI: ${settings.upi}`;
+      container.appendChild(upiIdDisplay);
+      
+      console.log('QR Generated with UPI:', upiString);
     }
 
     function showToast(message, type = 'success') {
@@ -735,7 +801,7 @@
       }
     }
 
-    // ============ PRODUCT MANAGEMENT (ADD PRODUCT) ============
+    // ============ PRODUCT MANAGEMENT ============
     function openAddProductForm(existingProduct = null) {
       const isEditing = existingProduct !== null;
       const product = existingProduct || { 
@@ -835,7 +901,6 @@
       
       document.getElementById('productFormModal').style.display = 'flex';
       
-      // Image upload handling
       document.getElementById('uploadImageBtn').onclick = () => {
         document.getElementById('productImageInput').click();
       };
@@ -846,7 +911,6 @@
           const reader = new FileReader();
           reader.onload = (event) => {
             document.getElementById('productImageData').value = event.target.result;
-            // Update preview
             const imgPreview = document.querySelector('#productFormModal img');
             if (imgPreview) {
               imgPreview.src = event.target.result;
@@ -860,12 +924,10 @@
         document.getElementById('productImageData').value = '';
         const imgPreview = document.querySelector('#productFormModal img');
         if (imgPreview) {
-          imgPreview.src = '';
           imgPreview.style.display = 'none';
         }
       };
       
-      // Save product
       document.getElementById('saveProductBtn').onclick = () => {
         const barcode = document.getElementById('prodBarcode').value.trim();
         const name = document.getElementById('prodName').value.trim();
@@ -876,7 +938,6 @@
         const stock = parseInt(document.getElementById('prodStock').value) || 0;
         const image = document.getElementById('productImageData').value;
         
-        // Validation
         if (!name) {
           showToast('Product name is required', 'error');
           return;
@@ -885,12 +946,7 @@
           showToast('Valid price is required', 'error');
           return;
         }
-        if (!barcode && !isEditing) {
-          showToast('Barcode is required for new products', 'error');
-          return;
-        }
         
-        // Check duplicate barcode
         const existingBarcode = products.find(p => p.barcode === barcode && p.id !== product.id);
         if (existingBarcode && barcode) {
           showToast('Product with this barcode already exists!', 'error');
@@ -910,14 +966,12 @@
         };
         
         if (isEditing) {
-          // Update existing product
           const index = products.findIndex(p => p.id === product.id);
           if (index !== -1) {
             products[index] = productData;
             showToast('Product updated successfully!', 'success');
           }
         } else {
-          // Add new product
           products.push(productData);
           showToast('New product added successfully!', 'success');
         }
@@ -927,7 +981,6 @@
         document.getElementById('modalContainer').innerHTML = '';
       };
       
-      // Delete product
       if (isEditing) {
         document.getElementById('deleteProductBtn').onclick = () => {
           if (confirm(`Delete "${product.name}" permanently?`)) {
@@ -940,7 +993,6 @@
         };
       }
       
-      // Cancel
       document.getElementById('cancelProductForm').onclick = () => {
         document.getElementById('productFormModal').style.display = 'none';
         document.getElementById('modalContainer').innerHTML = '';
@@ -950,16 +1002,11 @@
     // ============ BARCODE SCANNER ============
     async function checkCameraPermission() {
       try {
-        if (!window.isSecureContext) {
-          throw new Error('Camera requires HTTPS or localhost');
-        }
-        const stream = await navigator.mediaDevices.getUserMedia({ 
-          video: { facingMode: 'environment' } 
-        });
+        if (!window.isSecureContext) throw new Error('Camera requires HTTPS');
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
         stream.getTracks().forEach(track => track.stop());
         return true;
       } catch (err) {
-        console.error('Camera permission error:', err);
         return false;
       }
     }
@@ -977,26 +1024,22 @@
             <div class="modal-content">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
                 <h3>📷 Scan Barcode</h3>
-                <button class="icon-btn" id="closeScanner" style="font-size: 1.5rem;">✕</button>
+                <button class="icon-btn" id="closeScanner">✕</button>
               </div>
               <div id="scannerContainer" class="scanner-view"></div>
-              <div id="scannerStatus" style="text-align: center; padding: 8px; color: var(--text-secondary);">
-                Initializing camera...
-              </div>
+              <div id="scannerStatus" style="text-align: center; padding: 8px;">Initializing camera...</div>
               <div style="display: flex; gap: 8px; margin-top: 12px;">
                 <button class="btn btn-outline" id="stopScanner" style="flex:1;">Close</button>
                 <button class="btn" id="manualEntryFallback" style="flex:1;">Enter Manually</button>
               </div>
             </div>
-          </div>
-        `;
+          </div>`;
         
         document.getElementById('scannerModal').style.display = 'flex';
         
         const closeScanner = () => {
           stopQuagga();
-          const modalEl = document.getElementById('scannerModal');
-          if (modalEl) modalEl.style.display = 'none';
+          document.getElementById('scannerModal').style.display = 'none';
           document.getElementById('modalContainer').innerHTML = '';
         };
         
@@ -1021,23 +1064,12 @@
             <div class="toast toast-error" style="position:static;transform:none;margin:12px 0;">
               Camera permission denied or not available
             </div>
-            <p><strong>Try these solutions:</strong></p>
-            <ul style="margin-left: 20px; line-height: 1.8;">
-              <li>Allow camera in browser settings</li>
-              <li>Use HTTPS connection</li>
-              <li>Try on mobile device</li>
-            </ul>
             <div style="display: flex; gap: 8px; margin-top: 16px;">
-              <button class="btn btn-outline" onclick="document.getElementById('errorModal').style.display='none';document.getElementById('modalContainer').innerHTML='';" style="flex:1;">
-                Cancel
-              </button>
-              <button class="btn btn-accent" id="manualInstead" style="flex:1;">
-                Enter Manually
-              </button>
+              <button class="btn btn-outline" onclick="document.getElementById('errorModal').style.display='none';document.getElementById('modalContainer').innerHTML='';">Cancel</button>
+              <button class="btn btn-accent" id="manualInstead">Enter Manually</button>
             </div>
           </div>
-        </div>
-      `;
+        </div>`;
       
       document.getElementById('manualInstead').onclick = () => {
         document.getElementById('errorModal').style.display = 'none';
@@ -1048,8 +1080,7 @@
 
     function initializeQuagga() {
       if (typeof Quagga === 'undefined') {
-        document.getElementById('scannerStatus').innerHTML = 
-          '<span style="color: #dc2626;">Scanner library not loaded</span>';
+        document.getElementById('scannerStatus').innerHTML = '<span style="color:red;">Library not loaded</span>';
         return;
       }
       
@@ -1058,30 +1089,21 @@
           name: "Live",
           type: "LiveStream",
           target: document.querySelector('#scannerContainer'),
-          constraints: {
-            facingMode: "environment",
-            width: { min: 640 },
-            height: { min: 480 }
-          }
+          constraints: { facingMode: "environment", width: { min: 640 }, height: { min: 480 } }
         },
-        decoder: {
-          readers: ["ean_reader", "ean_8_reader", "upc_reader", "code_128_reader"]
-        }
+        decoder: { readers: ["ean_reader", "ean_8_reader", "upc_reader", "code_128_reader"] }
       }, function(err) {
         if (err) {
-          document.getElementById('scannerStatus').innerHTML = 
-            '<span style="color: #dc2626;">Camera error: ' + err.message + '</span>';
+          document.getElementById('scannerStatus').innerHTML = `<span style="color:red;">Error: ${err.message}</span>`;
           return;
         }
-        
         Quagga.start();
         scannerActive = true;
-        document.getElementById('scannerStatus').innerHTML = 
-          '<span style="color: #16a34a;">✅ Camera active - Point at barcode</span>';
+        document.getElementById('scannerStatus').innerHTML = '<span style="color:green;">✅ Camera active</span>';
       });
       
       Quagga.onDetected(function(result) {
-        if (result && result.codeResult && result.codeResult.code) {
+        if (result?.codeResult?.code) {
           const code = result.codeResult.code;
           stopQuagga();
           document.getElementById('scannerModal').style.display = 'none';
@@ -1102,9 +1124,9 @@
       const product = getProductByBarcode(code);
       if (product) {
         addToCart(product);
-        showToast(`${product.name} added to cart`, 'success');
+        showToast(`${product.name} added`, 'success');
       } else {
-        showToast('Product not found in database', 'error');
+        showToast('Product not found', 'error');
         setTimeout(() => showManualEntry(code), 1000);
       }
     }
@@ -1116,30 +1138,27 @@
           <div class="modal-content">
             <h3>➕ Add to Cart</h3>
             <label>Barcode</label>
-            <input id="manBarcode" value="${prefillBarcode}" placeholder="Enter barcode">
+            <input id="manBarcode" value="${prefillBarcode}">
             <label>Product Name</label>
-            <input id="manName" placeholder="Product name">
+            <input id="manName">
             <div class="grid-2">
               <div><label>Price</label><input id="manPrice" type="number" step="0.01"></div>
               <div><label>Tax %</label><input id="manTax" type="number" value="5"></div>
             </div>
             <label>Quantity</label>
             <input id="manQty" type="number" value="1" min="1">
-            <div style="display: flex; gap: 8px; margin-top: 16px;">
+            <div style="display:flex;gap:8px;margin-top:16px;">
               <button class="btn btn-outline" id="closeManual" style="flex:1;">Cancel</button>
               <button class="btn btn-accent" id="addManualToCart" style="flex:1;">Add to Cart</button>
             </div>
           </div>
-        </div>
-      `;
+        </div>`;
       
       document.getElementById('manualModal').style.display = 'flex';
       
       document.getElementById('addManualToCart').onclick = () => {
         const name = document.getElementById('manName').value.trim();
         const price = parseFloat(document.getElementById('manPrice').value);
-        const barcode = document.getElementById('manBarcode').value.trim() || Date.now().toString();
-        
         if (!name || isNaN(price)) {
           showToast('Name and price required', 'error');
           return;
@@ -1147,17 +1166,13 @@
         
         const product = {
           id: nextProductId++,
-          barcode: barcode,
-          name: name,
-          price: price,
+          barcode: document.getElementById('manBarcode').value.trim() || Date.now().toString(),
+          name, price,
           tax: parseFloat(document.getElementById('manTax').value) || 0,
-          unit: 'piece',
-          category: 'Quick Add',
-          image: '',
-          stock: 0
+          unit: 'piece', category: 'Quick Add', image: '', stock: 0
         };
         
-        if (!getProductByBarcode(barcode) && barcode.length > 5) {
+        if (!getProductByBarcode(product.barcode) && product.barcode.length > 5) {
           products.push(product);
           saveProducts();
         }
@@ -1173,7 +1188,7 @@
       };
     }
 
-    // ============ BILL GENERATION & PRINTING ============
+    // ============ BILL GENERATION WITH AMOUNT IN QR ============
     function generateBillHTML(format) {
       const { subtotal, totalTax, final } = calculateCart();
       const billNo = billCounter + 1;
@@ -1190,6 +1205,8 @@
         </tr>
       `).join('');
       
+      const qrPlaceholder = `<div id="qrCodePrint" style="text-align:center;margin-top:10px;"></div>`;
+      
       if (format === 'thermal') {
         return `
           <div style="width:58mm;font-family:'Courier New',monospace;font-size:11px;padding:3mm;background:white;">
@@ -1200,13 +1217,11 @@
               ${shop.gst ? `<br><small>GST: ${shop.gst}</small>` : ''}
             </div>
             <div style="border-top:1px dashed #000;border-bottom:1px dashed #000;padding:2mm 0;margin:2mm 0;">
-              Date: ${date} ${time}<br>
-              Bill No: #${billNo}
+              Date: ${date} ${time}<br>Bill No: #${billNo}
+              ${currentCustomer.name ? `<br>Customer: ${currentCustomer.name}` : ''}
             </div>
             <table style="width:100%;font-size:10px;">
-              <tr style="border-bottom:1px solid #000;">
-                <th>Item</th><th>Qty</th><th>Price</th><th>Total</th>
-              </tr>
+              <tr style="border-bottom:1px solid #000;"><th>Item</th><th>Qty</th><th>Price</th><th>Total</th></tr>
               ${itemsHtml}
             </table>
             <div style="border-top:1px dashed #000;margin-top:2mm;padding-top:2mm;">
@@ -1214,15 +1229,12 @@
               <div style="display:flex;justify-content:space-between;"><span>Tax:</span><span>${formatCurrency(totalTax)}</span></div>
               <div style="display:flex;justify-content:space-between;font-weight:bold;font-size:13px;margin-top:1mm;"><span>TOTAL:</span><span>${formatCurrency(final)}</span></div>
             </div>
-            <div style="text-align:center;margin-top:3mm;">
-              <div id="qrCodePrint"></div>
-              <small>UPI: ${shop.upi}</small>
-            </div>
+            ${qrPlaceholder}
             <div style="text-align:center;margin-top:2mm;font-size:9px;">${shop.footer}</div>
           </div>`;
       }
       
-      // Default A4/A5 format
+      // A4/A5 format
       return `
         <div style="padding:20px;font-family:Arial,sans-serif;background:white;">
           <div style="border-bottom:3px solid #000;padding-bottom:10px;">
@@ -1240,13 +1252,12 @@
               <p style="font-weight:bold;font-size:16px;">Total: ${formatCurrency(final)}</p>
             </div>
           </div>
-          <div style="text-align:center;margin-top:20px;">
-            <div id="qrCodePrint"></div>
-            <p>${shop.footer}</p>
-          </div>
+          ${qrPlaceholder}
+          <p style="text-align:center;">${shop.footer}</p>
         </div>`;
     }
 
+    // ============ PRINT BILL WITH AMOUNT QR ============
     async function printBill(format = settings.defaultFormat || 'thermal') {
       if (!cart.length) {
         showToast('Cart is empty!', 'error');
@@ -1254,13 +1265,14 @@
       }
       
       billCounter++;
+      const { final } = calculateCart();
       const billData = {
         id: billCounter,
         date: new Date().toISOString(),
         items: JSON.parse(JSON.stringify(cart)),
         subtotal: calculateCart().subtotal,
         tax: calculateCart().totalTax,
-        total: calculateCart().final,
+        total: final,
         customer: {...currentCustomer},
         format: format
       };
@@ -1272,16 +1284,9 @@
       printArea.innerHTML = generateBillHTML(format);
       printArea.style.display = 'block';
       
+      // Generate QR with the ACTUAL bill amount
       setTimeout(() => {
-        const qrContainer = document.getElementById('qrCodePrint');
-        if (qrContainer && typeof QRCode !== 'undefined') {
-          qrContainer.innerHTML = '';
-          new QRCode(qrContainer, {
-            text: `upi://pay?pa=${settings.upi}&pn=${settings.shopName}`,
-            width: 100,
-            height: 100,
-          });
-        }
+        generateQRCode('qrCodePrint', final);
         
         setTimeout(() => {
           window.print();
@@ -1297,28 +1302,20 @@
       }, 200);
     }
 
-    // ============ PDF & JPG DOWNLOAD ============
+    // ============ PDF DOWNLOAD WITH AMOUNT QR ============
     async function downloadPDF() {
       if (!cart.length) {
         showToast('Cart is empty!', 'error');
         return;
       }
       
+      const { final } = calculateCart();
       const printArea = document.getElementById('printArea');
       printArea.innerHTML = generateBillHTML('a4');
       printArea.style.display = 'block';
       
-      // Generate QR code
       setTimeout(async () => {
-        const qrContainer = document.getElementById('qrCodePrint');
-        if (qrContainer && typeof QRCode !== 'undefined') {
-          qrContainer.innerHTML = '';
-          new QRCode(qrContainer, {
-            text: `upi://pay?pa=${settings.upi}&pn=${settings.shopName}`,
-            width: 100,
-            height: 100,
-          });
-        }
+        generateQRCode('qrCodePrint', final);
         
         setTimeout(async () => {
           try {
@@ -1332,9 +1329,8 @@
             };
             
             await html2pdf().set(opt).from(element).save();
-            showToast('PDF downloaded successfully!', 'success');
+            showToast('PDF downloaded with payment QR!', 'success');
           } catch (err) {
-            console.error('PDF error:', err);
             showToast('PDF download failed', 'error');
           }
           
@@ -1344,12 +1340,14 @@
       }, 200);
     }
 
+    // ============ JPG DOWNLOAD WITH AMOUNT QR ============
     async function downloadJPG() {
       if (!cart.length) {
         showToast('Cart is empty!', 'error');
         return;
       }
       
+      const { final } = calculateCart();
       const printArea = document.getElementById('printArea');
       printArea.innerHTML = generateBillHTML('thermal');
       printArea.style.display = 'block';
@@ -1357,15 +1355,7 @@
       printArea.style.left = '-9999px';
       
       setTimeout(async () => {
-        const qrContainer = document.getElementById('qrCodePrint');
-        if (qrContainer && typeof QRCode !== 'undefined') {
-          qrContainer.innerHTML = '';
-          new QRCode(qrContainer, {
-            text: `upi://pay?pa=${settings.upi}&pn=${settings.shopName}`,
-            width: 80,
-            height: 80,
-          });
-        }
+        generateQRCode('qrCodePrint', final);
         
         setTimeout(async () => {
           try {
@@ -1380,9 +1370,8 @@
             link.href = canvas.toDataURL('image/jpeg', 0.95);
             link.click();
             
-            showToast('JPG downloaded successfully!', 'success');
+            showToast('JPG downloaded with payment QR!', 'success');
           } catch (err) {
-            console.error('JPG error:', err);
             showToast('JPG download failed', 'error');
           }
           
@@ -1393,35 +1382,33 @@
       }, 200);
     }
 
+    // ============ SHARE BILL WITH AMOUNT ============
     async function shareBill() {
       if (!cart.length) {
         showToast('Cart is empty!', 'error');
         return;
       }
       
+      const { final } = calculateCart();
+      const upiLink = generateUPIString(final);
+      const text = cart.map(item => 
+        `${item.name} x${item.quantity} - ${formatCurrency(item.price * item.quantity)}`
+      ).join('\n');
+      
+      const shareText = `🛒 ${settings.shopName}\n\n${text}\n\nTotal: ${formatCurrency(final)}\n\nPay via UPI: ${upiLink}`;
+      
       if (navigator.share) {
-        const text = cart.map(item => 
-          `${item.name} x${item.quantity} - ${formatCurrency(item.price * item.quantity)}`
-        ).join('\n');
-        
         try {
           await navigator.share({
             title: `Bill from ${settings.shopName}`,
-            text: `🛒 ${settings.shopName}\n${text}\n\nTotal: ${formatCurrency(calculateCart().final)}`,
+            text: shareText,
           });
         } catch (err) {
           console.log('Share cancelled');
         }
       } else {
-        // Fallback: copy to clipboard
-        const text = cart.map(item => 
-          `${item.name} x${item.quantity} - ${formatCurrency(item.price * item.quantity)}`
-        ).join('\n');
-        
-        await navigator.clipboard.writeText(
-          `🛒 ${settings.shopName}\n${text}\n\nTotal: ${formatCurrency(calculateCart().final)}`
-        );
-        showToast('Bill copied to clipboard!', 'success');
+        await navigator.clipboard.writeText(shareText);
+        showToast('Bill copied with payment link!', 'success');
       }
     }
 
@@ -1437,7 +1424,7 @@
           </div>
           <div style="max-height: 400px; overflow-y: auto;">
             ${salesHistory.length === 0 ? 
-              '<p style="text-align:center;color:var(--text-secondary);">No sales yet</p>' :
+              '<p style="text-align:center;">No sales yet</p>' :
               salesHistory.slice(0, 50).map(bill => `
                 <div class="product-card">
                   <div style="display:flex;justify-content:space-between;">
@@ -1457,8 +1444,7 @@
               `).join('')
             }
           </div>
-        </div>
-      `;
+        </div>`;
       
       document.getElementById('closeHistory').onclick = () => {
         document.getElementById('drawerContainer').innerHTML = '';
@@ -1503,7 +1489,7 @@
                       <span class="category-tag">${p.category}</span>
                       <span class="badge">${formatCurrency(p.price)}</span>
                     </div>
-                    <small style="color:var(--text-secondary);display:block;">
+                    <small style="color:var(--text-secondary);">
                       Barcode: ${p.barcode} | Stock: ${p.stock || 0}
                     </small>
                   </div>
@@ -1514,8 +1500,7 @@
               </div>
             `).join('')}
           </div>
-        </div>
-      `;
+        </div>`;
       
       document.getElementById('closeProducts').onclick = () => {
         document.getElementById('drawerContainer').innerHTML = '';
@@ -1541,7 +1526,7 @@
                   <span class="category-tag">${p.category}</span>
                   <span class="badge">${formatCurrency(p.price)}</span>
                 </div>
-                <small style="color:var(--text-secondary);display:block;">
+                <small style="color:var(--text-secondary);">
                   Barcode: ${p.barcode} | Stock: ${p.stock || 0}
                 </small>
               </div>
@@ -1579,21 +1564,22 @@
           <h3>⚙️ Shop Settings</h3>
           <label>Shop Name</label>
           <input id="setShop" value="${settings.shopName}">
-          <label>Owner Name</label>
+          <label>Owner</label>
           <input id="setOwner" value="${settings.owner}">
           <label>Mobile</label>
           <input id="setMobile" value="${settings.mobile}">
           <label>Address</label>
           <textarea id="setAddr">${settings.address}</textarea>
-          <label>GST Number</label>
+          <label>GST</label>
           <input id="setGst" value="${settings.gst}">
-          <label>UPI ID</label>
+          <label>UPI ID (for QR payment)</label>
           <input id="setUpi" value="${settings.upi}">
+          <small style="color:var(--text-secondary);">Example: shopname@upi</small>
           <label>Footer</label>
           <input id="setFooter" value="${settings.footer}">
           <label>Default Format</label>
           <select id="setFormat">
-            <option value="thermal" ${settings.defaultFormat==='thermal'?'selected':''}>Thermal</option>
+            <option value="thermal" ${settings.defaultFormat==='thermal'?'selected':''}>Thermal (58mm)</option>
             <option value="a5" ${settings.defaultFormat==='a5'?'selected':''}>A5</option>
             <option value="a4" ${settings.defaultFormat==='a4'?'selected':''}>A4</option>
           </select>
@@ -1601,8 +1587,7 @@
             <button class="btn btn-outline" id="closeSettings" style="flex:1;">Cancel</button>
             <button class="btn btn-accent" id="saveSettings" style="flex:1;">Save</button>
           </div>
-        </div>
-      `;
+        </div>`;
       
       document.getElementById('closeSettings').onclick = () => {
         document.getElementById('drawerContainer').innerHTML = '';
@@ -1623,12 +1608,9 @@
       };
     }
 
-    // ============ BACKUP & RESTORE ============
+    // ============ BACKUP ============
     function backupData() {
-      const data = {
-        products, settings, salesHistory, billCounter,
-        exportDate: new Date().toISOString()
-      };
+      const data = { products, settings, salesHistory, billCounter, exportDate: new Date().toISOString() };
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -1651,21 +1633,17 @@
           try {
             const data = JSON.parse(event.target.result);
             if (data.products) {
-              if (confirm('Restore backup? This will replace current data.')) {
+              if (confirm('Restore backup? Current data will be replaced.')) {
                 products = data.products;
                 settings = data.settings;
                 salesHistory = data.salesHistory || [];
                 billCounter = data.billCounter || 1000;
-                saveProducts();
-                saveSettings();
-                saveHistory();
+                saveProducts(); saveSettings(); saveHistory();
                 updateDashboard();
                 showToast('Data restored!', 'success');
               }
             }
-          } catch (err) {
-            showToast('Invalid backup file', 'error');
-          }
+          } catch (err) { showToast('Invalid file', 'error'); }
         };
         reader.readAsText(file);
       };
@@ -1678,25 +1656,14 @@
         <div class="drawer">
           <div class="drawer-handle"></div>
           <h3>💾 Backup & Restore</h3>
-          <div style="display:grid;gap:12px;margin-top:16px;">
-            <button class="btn btn-accent" id="exportBackup">📥 Download Backup</button>
-            <button class="btn btn-outline" id="importBackup">📤 Restore Backup</button>
-            <button class="btn btn-outline" id="closeBackup">Cancel</button>
-          </div>
-        </div>
-      `;
+          <button class="btn btn-accent" id="exportBackup" style="width:100%;margin:8px 0;">📥 Download Backup</button>
+          <button class="btn btn-outline" id="importBackup" style="width:100%;margin:8px 0;">📤 Restore Backup</button>
+          <button class="btn btn-outline" id="closeBackup" style="width:100%;">Cancel</button>
+        </div>`;
       
-      document.getElementById('exportBackup').onclick = () => {
-        backupData();
-        document.getElementById('drawerContainer').innerHTML = '';
-      };
-      document.getElementById('importBackup').onclick = () => {
-        restoreData();
-        document.getElementById('drawerContainer').innerHTML = '';
-      };
-      document.getElementById('closeBackup').onclick = () => {
-        document.getElementById('drawerContainer').innerHTML = '';
-      };
+      document.getElementById('exportBackup').onclick = () => { backupData(); document.getElementById('drawerContainer').innerHTML = ''; };
+      document.getElementById('importBackup').onclick = () => { restoreData(); document.getElementById('drawerContainer').innerHTML = ''; };
+      document.getElementById('closeBackup').onclick = () => { document.getElementById('drawerContainer').innerHTML = ''; };
     }
 
     // ============ DASHBOARD ============
@@ -1716,19 +1683,14 @@
     document.getElementById('scanBarcodeBtn').addEventListener('click', startScanner);
     document.getElementById('manualAddBtn').addEventListener('click', () => showManualEntry());
     document.getElementById('printBillBtn').addEventListener('click', () => {
-      if (!cart.length) {
-        showToast('Cart is empty!', 'error');
-        return;
-      }
+      if (!cart.length) { showToast('Cart is empty!', 'error'); return; }
       printBill(settings.defaultFormat);
     });
     
-    // Download buttons
     document.getElementById('downloadPdfBtn').addEventListener('click', downloadPDF);
     document.getElementById('downloadJpgBtn').addEventListener('click', downloadJPG);
     document.getElementById('shareBillBtn').addEventListener('click', shareBill);
     
-    // Navigation buttons
     document.getElementById('darkToggle').addEventListener('click', () => {
       document.body.classList.toggle('dark');
       localStorage.setItem('darkMode', document.body.classList.contains('dark'));
@@ -1744,17 +1706,14 @@
       drawer.innerHTML = `
         <div class="drawer">
           <div class="drawer-handle"></div>
-          <h3>👤 Customer Details</h3>
-          <label>Name</label>
-          <input id="custName" value="${currentCustomer.name}">
-          <label>Mobile</label>
-          <input id="custMobile" value="${currentCustomer.mobile}">
+          <h3>👤 Customer</h3>
+          <label>Name</label><input id="custName" value="${currentCustomer.name}">
+          <label>Mobile</label><input id="custMobile" value="${currentCustomer.mobile}">
           <div style="display:flex;gap:8px;margin-top:16px;">
             <button class="btn btn-outline" id="clearCustomer" style="flex:1;">Clear</button>
             <button class="btn btn-accent" id="saveCustomer" style="flex:1;">Save</button>
           </div>
-        </div>
-      `;
+        </div>`;
       
       document.getElementById('saveCustomer').onclick = () => {
         currentCustomer.name = document.getElementById('custName').value;
@@ -1776,8 +1735,7 @@
     updateDashboard();
     
     console.log('✅ Grocery POS Ready!');
-    console.log('📱 Features: Scan, Print, PDF/JPG Download, Product Management');
-    console.log('💡 Shortcuts: Ctrl+B=Scan, Ctrl+M=Manual, Ctrl+P=Print');
+    console.log('💰 QR codes now include bill amount for direct UPI payment');
   })();
 </script>
 </body>
